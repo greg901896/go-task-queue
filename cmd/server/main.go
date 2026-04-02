@@ -2,45 +2,36 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"time"
 
+	"github.com/greg901896/go-task-queue/internal/api"
 	"github.com/greg901896/go-task-queue/internal/queue"
+	"github.com/greg901896/go-task-queue/internal/store"
 )
 
 func main() {
-	// part 2 redis queue test
-	q, err := queue.NewRedisQueue("localhost:6379", "task_queue:test")
+	ctx := context.Background()
+
+	// 1. 連線 Postgres
+	db, err := store.NewPostgresStore(ctx, "postgres://taskqueue:taskqueue@localhost:5432/taskqueue?sslmode=disable")
+	if err != nil {
+		log.Fatal("❌ Failed to connect to Postgres:", err)
+	}
+	defer db.Close()
+	log.Println("✅ Connected to Postgres!")
+
+	// 2. 連線 Redis
+	q, err := queue.NewRedisQueue("localhost:6379", "task_queue:default")
 	if err != nil {
 		log.Fatal("❌ Failed to connect to Redis:", err)
 	}
 	defer q.Close()
-	fmt.Println("✅ Connected to Redis!")
+	log.Println("✅ Connected to Redis!")
 
-	ctx := context.Background()
-
-	// 推 3 個 job ID 進去
-	q.Push(ctx, "job-001")
-	q.Push(ctx, "job-002")
-	q.Push(ctx, "job-003")
-	fmt.Println("✅ Pushed 3 jobs")
-
-	// 看佇列長度
-	length, _ := q.Len(ctx)
-	fmt.Printf("📊 Queue length: %d\n", length)
-
-	// 拿出來，應該是 FIFO：001 → 002 → 003
-	for i := 0; i < 3; i++ {
-		id, err := q.Pop(ctx, 2*time.Second)
-		if err != nil {
-			log.Fatal("❌ Pop failed:", err)
-		}
-		fmt.Printf("📋 Popped: %s\n", id)
+	// 3. 建立並啟動 API Server
+	srv := api.NewServer(db, q)
+	log.Println("🚀 Server starting on :8080")
+	if err := srv.Run(":8080"); err != nil {
+		log.Fatal("❌ Server failed:", err)
 	}
-
-	// 再看一次長度，應該是 0
-	length, _ = q.Len(ctx)
-	fmt.Printf("📊 Queue length after pop: %d\n", length)
-
 }
