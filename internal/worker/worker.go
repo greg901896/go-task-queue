@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/greg901896/go-task-queue/internal/store"
 )
 
-// Worker 就是廚師，不斷從 queue 拿任務來做
 type Worker struct {
 	store *store.PostgresStore
 	queue *queue.RedisQueue
@@ -22,6 +22,30 @@ func NewWorker(s *store.PostgresStore, q *queue.RedisQueue) *Worker {
 		store: s,
 		queue: q,
 	}
+}
+
+// executeJob 依照 job.Type 分派到對應的處理函式
+func executeJob(job *model.Job) error {
+	switch job.Type {
+	case "send_email":
+		return handleSendEmail(job)
+	case "resize_image":
+		return handleResizeImage(job)
+	default:
+		return fmt.Errorf("unknown job type: %s", job.Type)
+	}
+}
+
+func handleSendEmail(job *model.Job) error {
+	log.Printf("📧 Sending email, payload: %s", job.Payload)
+	time.Sleep(1 * time.Second)
+	return nil
+}
+
+func handleResizeImage(job *model.Job) error {
+	log.Printf("🖼️ Resizing image, payload: %s", job.Payload)
+	time.Sleep(1 * time.Second)
+	return nil
 }
 
 // Start 讓 Worker 開始不斷從 queue 拿任務來做
@@ -49,11 +73,25 @@ func (w *Worker) Start(ctx context.Context) {
 		w.store.UpdateJobStatus(ctx, job.ID, model.StatusRunning)
 		log.Printf("🔄 Processing job: %s (type: %s)", job.ID, job.Type)
 
-		// 4. 模擬執行任務（之後會換成真的處理邏輯）
-		time.Sleep(2 * time.Second)
+		// 4. 執行任務
+		err = executeJob(job)
 
-		// 5. 完成，更新狀態為 done
-		w.store.UpdateJobStatus(ctx, job.ID, model.StatusDone)
-		log.Printf("✅ Job done: %s", job.ID)
+		// 5. 根據結果更新狀態
+		if err != nil {
+			log.Printf("❌ Job failed: %s, err: %v", job.ID, err)
+			if job.RetryCount < job.MaxRetries {
+				// 還有重試次數，推回 queue
+				w.store.IncrementRetryCount(ctx, job.ID)
+				w.queue.Push(ctx, job.ID)
+				log.Printf("🔁 Retrying job %s (%d/%d)", job.ID, job.RetryCount+1, job.MaxRetries)
+			} else {
+				// 超過上限，標記為 dead
+				w.store.UpdateJobStatus(ctx, job.ID, model.StatusDead)
+				log.Printf("💀 Job dead: %s", job.ID)
+			}
+		} else {
+			w.store.UpdateJobStatus(ctx, job.ID, model.StatusDone)
+			log.Printf("✅ Job done: %s", job.ID)
+		}
 	}
 }

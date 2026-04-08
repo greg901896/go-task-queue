@@ -2,7 +2,6 @@ package model
 
 import "time"
 
-// 用常數定義狀態，避免到處寫字串打錯字
 type JobStatus string
 
 const (
@@ -13,7 +12,6 @@ const (
 	StatusDead    JobStatus = "dead"
 )
 
-// Job 就是一筆任務
 type Job struct {
 	ID         string     `json:"id"`
 	Type       string     `json:"type"`

@@ -59,6 +59,18 @@ func (s *PostgresStore) GetJob(ctx context.Context, id string) (*model.Job, erro
 	return job, nil
 }
 
+// 增加重試次數
+func (s *PostgresStore) IncrementRetryCount(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET retry_count = retry_count + 1 WHERE id = $1`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("increment retry count: %w", err)
+	}
+	return nil
+}
+
 // 更新任務狀態
 func (s *PostgresStore) UpdateJobStatus(ctx context.Context, id string, status model.JobStatus) error {
 	_, err := s.pool.Exec(ctx,

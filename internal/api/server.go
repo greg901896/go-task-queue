@@ -27,6 +27,7 @@ func NewServer(s *store.PostgresStore, q *queue.RedisQueue) *Server {
 	// 設定路由
 	srv.router.POST("/tasks", srv.createTask)
 	srv.router.GET("/tasks/next", srv.getNextTask)
+	srv.router.GET("/tasks/:id", srv.getTaskByID)
 
 	return srv
 }
@@ -65,6 +66,19 @@ func (srv *Server) createTask(c *gin.Context) {
 
 	// 4. 回傳建立好的 job
 	c.JSON(201, job)
+}
+
+// getTaskByID 處理 GET /tasks/:id
+func (srv *Server) getTaskByID(c *gin.Context) {
+	id := c.Param("id")
+
+	job, err := srv.store.GetJob(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "job not found"})
+		return
+	}
+
+	c.JSON(200, job)
 }
 
 // getNextTask 處理 GET /tasks/next
