@@ -2,12 +2,29 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/greg901896/go-task-queue/internal/queue"
 	"github.com/greg901896/go-task-queue/internal/store"
 )
+
+// RequestLogger 記錄每個請求的方法、路徑、狀態碼和處理時間
+func RequestLogger() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+
+		c.Next()
+
+		log.Printf("📝 %s %s → %d (%v)",
+			c.Request.Method,
+			c.Request.URL.Path,
+			c.Writer.Status(),
+			time.Since(start),
+		)
+	}
+}
 
 // Server 是 API 伺服器，需要 store 和 queue 才能工作
 type Server struct {
@@ -23,6 +40,9 @@ func NewServer(s *store.PostgresStore, q *queue.RedisQueue) *Server {
 		store:  s,
 		queue:  q,
 	}
+
+	// 套用 middleware
+	srv.router.Use(RequestLogger())
 
 	// 設定路由
 	srv.router.POST("/tasks", srv.createTask)
