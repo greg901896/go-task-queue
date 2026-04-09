@@ -69,12 +69,14 @@ func (w *Worker) Start(ctx context.Context) {
 			continue
 		}
 
-		// 3. 更新狀態為 running
+		// 3. 更新狀態為 running + 記錄開始時間
 		w.store.UpdateJobStatus(ctx, job.ID, model.StatusRunning)
+		w.store.UpdateJobStartedAt(ctx, job.ID)
 		log.Printf("🔄 Processing job: %s (type: %s)", job.ID, job.Type)
 
 		// 4. 執行任務
 		err = executeJob(job)
+		w.store.UpdateJobFinishedAt(ctx, job.ID)
 
 		// 5. 根據結果更新狀態
 		if err != nil {

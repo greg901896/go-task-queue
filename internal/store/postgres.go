@@ -71,6 +71,28 @@ func (s *PostgresStore) IncrementRetryCount(ctx context.Context, id string) erro
 	return nil
 }
 
+// 更新任務開始時間
+func (s *PostgresStore) UpdateJobStartedAt(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET started_at = NOW() WHERE id = $1`, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update job started_at: %w", err)
+	}
+	return nil
+}
+
+// 更新任務結束時間
+func (s *PostgresStore) UpdateJobFinishedAt(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET finished_at = NOW() WHERE id = $1`, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update job finished_at: %w", err)
+	}
+	return nil
+}
+
 // 更新任務狀態
 func (s *PostgresStore) UpdateJobStatus(ctx context.Context, id string, status model.JobStatus) error {
 	_, err := s.pool.Exec(ctx,
