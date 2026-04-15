@@ -12,13 +12,20 @@ import (
 	"github.com/greg901896/go-task-queue/internal/worker"
 )
 
+func getEnv(key, fallback string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return fallback
+}
+
 func main() {
 	// 建立可取消的 context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// 1. 連線 Postgres
-	db, err := store.NewPostgresStore(ctx, "postgres://taskqueue:taskqueue@localhost:5432/taskqueue?sslmode=disable")
+	db, err := store.NewPostgresStore(ctx, getEnv("DATABASE_URL", "postgres://taskqueue:taskqueue@localhost:5432/taskqueue?sslmode=disable"))
 	if err != nil {
 		log.Fatal("❌ Failed to connect to Postgres:", err)
 	}
@@ -26,7 +33,7 @@ func main() {
 	log.Println("✅ Connected to Postgres!")
 
 	// 2. 連線 Redis
-	q, err := queue.NewRedisQueue("localhost:6379", "task_queue:default")
+	q, err := queue.NewRedisQueue(getEnv("REDIS_ADDR", "localhost:6379"), getEnv("QUEUE_KEY", "task_queue:default"))
 	if err != nil {
 		log.Fatal("❌ Failed to connect to Redis:", err)
 	}

@@ -64,8 +64,9 @@ func (srv *Server) Run(addr string) error {
 func (srv *Server) createTask(c *gin.Context) {
 	// 1. 解析 request body
 	var req struct {
-		Type    string          `json:"type" binding:"required"`
-		Payload json.RawMessage `json:"payload"`
+		Type       string          `json:"type" binding:"required"`
+		Payload    json.RawMessage `json:"payload"`
+		MaxRetries int             `json:"max_retries"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -74,7 +75,7 @@ func (srv *Server) createTask(c *gin.Context) {
 	}
 
 	// 2. 存進 Postgres
-	job, err := srv.store.CreateJob(c.Request.Context(), req.Type, req.Payload)
+	job, err := srv.store.CreateJob(c.Request.Context(), req.Type, req.Payload, req.MaxRetries)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "failed to create job: " + err.Error()})
 		return

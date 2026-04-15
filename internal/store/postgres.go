@@ -27,12 +27,12 @@ func (s *PostgresStore) Close() {
 }
 
 // 建立任務
-func (s *PostgresStore) CreateJob(ctx context.Context, jobType string, payload []byte) (*model.Job, error) {
+func (s *PostgresStore) CreateJob(ctx context.Context, jobType string, payload []byte, maxRetries int) (*model.Job, error) {
 	job := &model.Job{}
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO jobs (type, payload) VALUES ($1, $2)
+		`INSERT INTO jobs (type, payload, max_retries) VALUES ($1, $2, $3)
 		 RETURNING id, type, payload, status, retry_count, max_retries, created_at`,
-		jobType, payload,
+		jobType, payload, maxRetries,
 	).Scan(&job.ID, &job.Type, &job.Payload, &job.Status,
 		&job.RetryCount, &job.MaxRetries, &job.CreatedAt)
 
