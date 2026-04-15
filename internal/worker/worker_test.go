@@ -29,3 +29,15 @@ func TestExecuteJob_UnknownType(t *testing.T) {
 		t.Fatal("expected error for unknown job type, got nil")
 	}
 }
+
+func TestExecuteJob_UnknownType_ErrorMessage(t *testing.T) {
+	job := &model.Job{Type: "invalid"}
+	err := executeJob(job)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	expected := "unknown job type: invalid"
+	if err.Error() != expected {
+		t.Fatalf("expected '%s', got '%s'", expected, err.Error())
+	}
+}
