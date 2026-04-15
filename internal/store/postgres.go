@@ -71,6 +71,33 @@ func (s *PostgresStore) IncrementRetryCount(ctx context.Context, id string) erro
 	return nil
 }
 
+// 列出任務（分頁）
+func (s *PostgresStore) ListJobs(ctx context.Context, limit, offset int) ([]*model.Job, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, type, payload, status, result, retry_count, max_retries,
+		        created_at, started_at, finished_at
+		 FROM jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []*model.Job
+	for rows.Next() {
+		job := &model.Job{}
+		err := rows.Scan(&job.ID, &job.Type, &job.Payload, &job.Status, &job.Result,
+			&job.RetryCount, &job.MaxRetries, &job.CreatedAt,
+			&job.StartedAt, &job.FinishedAt)
+		if err != nil {
+			return nil, fmt.Errorf("scan job: %w", err)
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
 // 更新任務開始時間
 func (s *PostgresStore) UpdateJobStartedAt(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx,

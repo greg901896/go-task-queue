@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,7 @@ func NewServer(s *store.PostgresStore, q *queue.RedisQueue) *Server {
 	// 設定路由
 	srv.router.POST("/tasks", srv.createTask)
 	srv.router.GET("/tasks/next", srv.getNextTask)
+	srv.router.GET("/tasks", srv.listTasks)
 	srv.router.GET("/tasks/:id", srv.getTaskByID)
 
 	return srv
@@ -86,6 +88,31 @@ func (srv *Server) createTask(c *gin.Context) {
 
 	// 4. 回傳建立好的 job
 	c.JSON(201, job)
+}
+
+// listTasks 處理 GET /tasks（分頁）
+func (srv *Server) listTasks(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+	offset := (page - 1) * limit
+
+	jobs, err := srv.store.ListJobs(c.Request.Context(), limit, offset)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to list jobs"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"page":  page,
+		"limit": limit,
+		"tasks": jobs,
+	})
 }
 
 // getTaskByID 處理 GET /tasks/:id
