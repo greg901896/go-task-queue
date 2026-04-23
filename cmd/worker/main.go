@@ -4,10 +4,12 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/greg901896/go-task-queue/internal/api"
 	"github.com/greg901896/go-task-queue/internal/queue"
 	"github.com/greg901896/go-task-queue/internal/store"
+	"github.com/greg901896/go-task-queue/internal/worker"
 )
 
 func getEnv(key, fallback string) string {
@@ -18,7 +20,9 @@ func getEnv(key, fallback string) string {
 }
 
 func main() {
-	ctx := context.Background()
+	// 建立可取消的 context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// 1. 連線 Postgres
 	db, err := store.NewPostgresStore(ctx, getEnv("DATABASE_URL", "postgres://taskqueue:taskqueue@localhost:5432/taskqueue?sslmode=disable"))
@@ -36,10 +40,17 @@ func main() {
 	defer q.Close()
 	log.Println("✅ Connected to Redis!")
 
-	// 3. 建立並啟動 API Server
-	srv := api.NewServer(db, q)
-	log.Println("🚀 Server starting on :8080")
-	if err := srv.Run(":8080"); err != nil {
-		log.Fatal("❌ Server failed:", err)
-	}
+	// 3. 背景監聽 Ctrl+C，收到後取消 context
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-quit
+		log.Println("⏳ Shutting down worker...")
+		cancel()
+	}()
+
+	// 4. 建立 Worker 並開始工作
+	w := worker.NewWorker(db, q)
+	w.Start(ctx)
+	log.Println("✅ Worker stopped gracefully")
 }

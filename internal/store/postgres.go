@@ -27,12 +27,12 @@ func (s *PostgresStore) Close() {
 }
 
 // 建立任務
-func (s *PostgresStore) CreateJob(ctx context.Context, jobType string, payload []byte) (*model.Job, error) {
+func (s *PostgresStore) CreateJob(ctx context.Context, jobType string, payload []byte, maxRetries int) (*model.Job, error) {
 	job := &model.Job{}
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO jobs (type, payload) VALUES ($1, $2)
+		`INSERT INTO jobs (type, payload, max_retries) VALUES ($1, $2, $3)
 		 RETURNING id, type, payload, status, retry_count, max_retries, created_at`,
-		jobType, payload,
+		jobType, payload, maxRetries,
 	).Scan(&job.ID, &job.Type, &job.Payload, &job.Status,
 		&job.RetryCount, &job.MaxRetries, &job.CreatedAt)
 
@@ -57,6 +57,67 @@ func (s *PostgresStore) GetJob(ctx context.Context, id string) (*model.Job, erro
 		return nil, fmt.Errorf("get job: %w", err)
 	}
 	return job, nil
+}
+
+// 增加重試次數
+func (s *PostgresStore) IncrementRetryCount(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET retry_count = retry_count + 1 WHERE id = $1`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("increment retry count: %w", err)
+	}
+	return nil
+}
+
+// 列出任務（分頁）
+func (s *PostgresStore) ListJobs(ctx context.Context, limit, offset int) ([]*model.Job, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, type, payload, status, result, retry_count, max_retries,
+		        created_at, started_at, finished_at
+		 FROM jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []*model.Job
+	for rows.Next() {
+		job := &model.Job{}
+		err := rows.Scan(&job.ID, &job.Type, &job.Payload, &job.Status, &job.Result,
+			&job.RetryCount, &job.MaxRetries, &job.CreatedAt,
+			&job.StartedAt, &job.FinishedAt)
+		if err != nil {
+			return nil, fmt.Errorf("scan job: %w", err)
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+// 更新任務開始時間
+func (s *PostgresStore) UpdateJobStartedAt(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET started_at = NOW() WHERE id = $1`, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update job started_at: %w", err)
+	}
+	return nil
+}
+
+// 更新任務結束時間
+func (s *PostgresStore) UpdateJobFinishedAt(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE jobs SET finished_at = NOW() WHERE id = $1`, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update job finished_at: %w", err)
+	}
+	return nil
 }
 
 // 更新任務狀態
