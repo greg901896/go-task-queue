@@ -4,21 +4,17 @@
 
 ## 系統架構
 
-```
-POST /tasks
-     |
-     v
-+-----------+   push job ID   +-----------+
-|  API      | --------------> |  Redis    |
-|  Server   |                 |  Queue    |
-|  :8080    | <-------------- |           |
-+-----------+  store/fetch    +-----------+
-     |                              |
-     v                              v BRPop
-+-------------+              +-----------+
-|  PostgreSQL | <----------- |  Worker   |
-|  (jobs)     |              |           |
-+-------------+              +-----------+
+```mermaid
+flowchart TD
+    Req["POST /tasks"] --> API["API Server (:8080)"]
+
+    API -- "push job ID" --> Redis["Redis Queue"]
+    API -- "store/fetch" --> Redis
+
+    API --> DB["PostgreSQL (jobs)"]
+
+    Redis -- "BRPOP" --> Worker["Worker"]
+    Worker --> DB
 ```
 
 **資料流程：**
