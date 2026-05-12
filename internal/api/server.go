@@ -2,11 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/greg901896/go-task-queue/internal/model"
 	"github.com/greg901896/go-task-queue/internal/queue"
 	"github.com/greg901896/go-task-queue/internal/store"
 )
@@ -130,22 +132,30 @@ func (srv *Server) getTaskByID(c *gin.Context) {
 }
 
 // getNextTask 處理 GET /tasks/next
-// 工人來領任務 → 從 queue 拿 ID → 從 DB 查細節 → 回傳
+// 外部 worker 來領任務 → 用 PopToProcessing 把 job 放進 processing list（可被 cleanup 救回）
+// 外部 worker 完成後應自行更新狀態，否則 cleanup 會視為卡住並 retry
 func (srv *Server) getNextTask(c *gin.Context) {
-	// 1. 從 Redis queue pop 一個 job ID（等最多 5 秒）
-	jobID, err := srv.queue.Pop(c.Request.Context(), 5*time.Second)
+	ctx := c.Request.Context()
+
+	jobID, err := srv.queue.PopToProcessing(ctx, 5*time.Second)
 	if err != nil {
 		c.JSON(204, gin.H{"message": "no tasks available"})
 		return
 	}
 
-	// 2. 從 Postgres 查 job 細節
-	job, err := srv.store.GetJob(c.Request.Context(), jobID)
+	job, err := srv.store.GetJob(ctx, jobID)
 	if err != nil {
+		if errors.Is(err, store.ErrJobNotFound) || errors.Is(err, store.ErrInvalidJobID) {
+			// 永久錯誤 → 丟進 dead letter list
+			srv.queue.MoveToDead(ctx, jobID, err.Error())
+		}
+		// 暫時錯誤就留在 processing list，cleanup 會再試
 		c.JSON(500, gin.H{"error": "failed to get job: " + err.Error()})
 		return
 	}
 
-	// 3. 回傳 job
+	srv.store.UpdateJobStatus(ctx, job.ID, model.StatusRunning)
+	srv.store.UpdateJobStartedAt(ctx, job.ID)
+
 	c.JSON(200, job)
 }
