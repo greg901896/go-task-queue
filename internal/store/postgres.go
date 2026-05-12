@@ -2,10 +2,19 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/greg901896/go-task-queue/internal/model"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// 永久性錯誤 — caller 可用 errors.Is 判斷，據此決定是否丟進 dead letter list
+var (
+	ErrJobNotFound  = errors.New("job not found")
+	ErrInvalidJobID = errors.New("invalid job id format")
 )
 
 type PostgresStore struct {
@@ -54,6 +63,13 @@ func (s *PostgresStore) GetJob(ctx context.Context, id string) (*model.Job, erro
 		&job.StartedAt, &job.FinishedAt)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrJobNotFound
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "22P02" {
+			return nil, ErrInvalidJobID
+		}
 		return nil, fmt.Errorf("get job: %w", err)
 	}
 	return job, nil
